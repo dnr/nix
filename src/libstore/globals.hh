@@ -1238,7 +1238,7 @@ public:
 
     Setting<int> styxMinSize{this, 32*1024, "styx-min-size",
         "Use styx only for paths > this nar size."};
-    Setting<std::string> styxSockPath{this, "/var/cache/styx/sock", "styx-sock-path",
+    Setting<std::string> styxSockPath{this, "/var/cache/styx/styx.sock", "styx-sock-path",
         "Path to styx socket."};
 };
 
