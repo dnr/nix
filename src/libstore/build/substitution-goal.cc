@@ -3,6 +3,8 @@
 #include "nar-info.hh"
 #include "finally.hh"
 #include "signals.hh"
+#include "binary-cache-store.hh"
+#include "local-store.hh"
 
 namespace nix {
 
@@ -192,8 +194,90 @@ void PathSubstitutionGoal::referencesValid()
         if (i != storePath) /* ignore self-references */
             assert(worker.store.isValidPath(i));
 
-    state = &PathSubstitutionGoal::tryToRun;
+    auto src = dynamic_cast<BinaryCacheStore *>(sub.get());
+    auto dst = dynamic_cast<LocalStore *>(&worker.store);
+
+    state = src && dst && src->canUseStyx(info->narSize) ?
+        &PathSubstitutionGoal::tryStyx : &PathSubstitutionGoal::tryToRun;
     worker.wakeUp(shared_from_this());
+}
+
+
+void PathSubstitutionGoal::tryStyx()
+{
+    trace("trying styx");
+
+    // limit concurrent jobs
+    if (worker.getNrSubstitutions() >= std::max(1U, (unsigned int) settings.maxSubstitutionJobs)) {
+        worker.waitForBuildSlot(shared_from_this());
+        return;
+    }
+
+    maintainRunningSubstitutions = std::make_unique<MaintainCount<uint64_t>>(worker.runningSubstitutions);
+    worker.updateProgress();
+
+    promise = std::promise<void>();
+
+    thr = std::thread([this]() {
+        try {
+            ReceiveInterrupts receiveInterrupts;
+
+            // TODO: better log line
+            Activity act(*logger, actSubstitute, Logger::Fields{
+                    worker.store.printStorePath(storePath), "STYX:"+sub->getUri()});
+            PushActivity pact(act.id);
+
+            auto local = dynamic_cast<LocalStore *>(&worker.store);
+            //printMsg(lvlNotice, "calling mountStyx");
+            local->mountStyx(sub->getUri(), *info, sub->isTrusted ? NoCheckSigs : CheckSigs);
+            //printMsg(lvlNotice, "mountStyx returned");
+
+            promise.set_value();
+        } catch (...) {
+            //printMsg(lvlNotice, "got exc from styx");
+            promise.set_exception(std::current_exception());
+        }
+    });
+
+    //printMsg(lvlNotice, "calling childStarted");
+    //worker.childStarted(shared_from_this(), {}, true, false);
+
+    state = &PathSubstitutionGoal::styxFinished;
+    worker.wakeUp(shared_from_this());
+    //printMsg(lvlNotice, "returning from tryStyx");
+}
+
+
+void PathSubstitutionGoal::styxFinished()
+{
+    trace("substitute with styx finished");
+
+    thr.join();
+    //worker.childTerminated(this);
+
+    try {
+        promise.get_future().get();
+    } catch (std::exception & e) {
+        printMsg(lvlError, "styx failed for '%s', falling back to substitution: %s",
+                worker.store.printStorePath(storePath), e.what());
+        // try regular substitution
+        // state = &PathSubstitutionGoal::tryToRun;
+        state = &PathSubstitutionGoal::tryNext; // FIXME: fail instead
+        worker.wakeUp(shared_from_this());
+        return;
+    }
+
+    printMsg(lvlNotice, "styx success!");
+    worker.markContentsGood(storePath);
+
+    printMsg(lvlChatty, "substitution of path '%s' succeeded with styx", worker.store.printStorePath(storePath));
+
+    maintainRunningSubstitutions.reset();
+    maintainExpectedSubstitutions.reset();
+    worker.doneSubstitutions++;
+    worker.updateProgress();
+
+    done(ecSuccess, BuildResult::StyxMounted);
 }
 
 

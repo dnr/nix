@@ -47,6 +47,8 @@
 #endif
 
 #include <sqlite3.h>
+#include <nlohmann/json.hpp>
+#include <curl/curl.h>
 
 
 namespace nix {
@@ -1307,6 +1309,84 @@ StorePath LocalStore::addToStoreFromDump(
     return dstPath;
 }
 
+
+static size_t writeCallback(char *ptr, size_t size, size_t nmemb, void *userdata) {
+    ((std::string*)userdata)->append(ptr, size * nmemb);
+    return size * nmemb;
+}
+
+void LocalStore::mountStyx(std::string sourceUri, const ValidPathInfo & info, CheckSigsFlag checkSigs)
+{
+    if (checkSigs && pathInfoIsUntrusted(info))
+        throw Error("cannot add path '%s' because it lacks a signature by a trusted key", printStorePath(info.path));
+
+    addTempRoot(info.path);
+
+    if (!isValidPath(info.path)) {
+        PathLocks outputLock;
+
+        auto realPath = Store::toRealPath(info.path);
+
+        /* Lock the output path.  But don't lock if we're being called
+           from a build hook (whose parent process already acquired a
+           lock on this path). */
+        if (!locksHeld.count(printStorePath(info.path)))
+            outputLock.lockPaths({realPath});
+
+        if (!isValidPath(info.path)) {
+            deletePath(realPath);
+            createDirs(realPath);
+
+            nlohmann::json req = {
+                {"Upstream", sourceUri},
+                {"StorePath", info.path.to_string()},
+                {"MountPoint", realPath},
+            };
+            auto postData = req.dump();
+
+            CURL *curl = curl_easy_init();
+            if (!curl) {
+                throw Error("curl init failed");
+            }
+
+            curl_easy_setopt(curl, CURLOPT_URL, "http://_/mount");
+            curl_easy_setopt(curl, CURLOPT_UNIX_SOCKET_PATH, settings.styxSockPath.get().c_str());
+            curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, postData.size());
+            // TODO: this doesn't seem to work for unix sockets?
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 1);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30);
+
+            std::string resData;
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resData);
+
+            //printMsg(lvlNotice, "asking styx to do '%s'", postData);
+            CURLcode curlRes = curl_easy_perform(curl);
+            curl_easy_cleanup(curl);
+            if (curlRes != CURLE_OK) {
+                throw Error("mount request to styx failed: curl code %d", curlRes);
+            }
+            //printMsg(lvlNotice, "styx response '%s'", trim(resData));
+            nlohmann::json res = nlohmann::json::parse(resData);
+            if (res.at("Success") != true) {
+                std::string error = res.at("Error");
+                // allow this error so we can repair if things are out of sync
+                // TODO: this doesn't really work, need styx to repair itself
+                if (error != "already mounted") {
+                    throw Error("mount request to styx failed: %s", error);
+                }
+            }
+
+            autoGC();
+
+            registerValidPath(info);
+        }
+
+        outputLock.setDeletion(true);
+    }
+}
 
 /* Create a temporary directory in the store that won't be
    garbage-collected until the returned FD is closed. */

@@ -12,6 +12,8 @@ struct HttpBinaryCacheStoreConfig : virtual BinaryCacheStoreConfig
 {
     using BinaryCacheStoreConfig::BinaryCacheStoreConfig;
 
+    const Setting<bool> useStyx{this, false, "styx", "Use styx for this store."};
+
     const std::string name() override { return "HTTP Binary Cache Store"; }
 
     std::string doc() override
@@ -82,6 +84,10 @@ public:
         auto ret = std::set<std::string>({"http", "https"});
         if (forceHttp) ret.insert("file");
         return ret;
+    }
+
+    bool canUseStyx(int narSize) override {
+        return useStyx && narSize > settings.styxMinSize;
     }
 
 protected:
