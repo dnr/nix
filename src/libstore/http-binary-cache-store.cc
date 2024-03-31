@@ -4,6 +4,8 @@
 #include "nar-info-disk-cache.hh"
 #include "callback.hh"
 
+#include <regex>
+
 namespace nix {
 
 MakeError(UploadToHTTP, Error);
@@ -11,6 +13,8 @@ MakeError(UploadToHTTP, Error);
 struct HttpBinaryCacheStoreConfig : virtual BinaryCacheStoreConfig
 {
     using BinaryCacheStoreConfig::BinaryCacheStoreConfig;
+
+    const Setting<bool> useStyx{this, false, "styx", "Use styx for this store."};
 
     const std::string name() override { return "HTTP Binary Cache Store"; }
 
@@ -82,6 +86,19 @@ public:
         auto ret = std::set<std::string>({"http", "https"});
         if (forceHttp) ret.insert("file");
         return ret;
+    }
+
+    bool canUseStyx(int narSize, std::string name) override {
+        if (!useStyx || narSize < settings.styxMinSize)
+            return false;
+        // TODO: compile these only once
+        for (auto & exc : settings.styxExclude.get())
+            if (std::regex_match(name, std::regex(exc)))
+                return false;
+        for (auto & inc : settings.styxInclude.get())
+            if (std::regex_match(name, std::regex(inc)))
+                return true;
+        return false;
     }
 
 protected:

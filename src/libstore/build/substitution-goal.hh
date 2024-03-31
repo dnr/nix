@@ -107,6 +107,8 @@ public:
     void referencesValid();
     void tryToRun();
     void finished();
+    void tryStyx();
+    void styxFinished();
 
     /**
      * Callback used by the worker to write to the log.

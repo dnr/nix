@@ -2,6 +2,7 @@
 #include "globals.hh"
 #include "local-store.hh"
 #include "finally.hh"
+#include "styx.hh"
 
 #include <functional>
 #include <queue>
@@ -649,6 +650,9 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
         }
 
         printInfo("deleting '%1%'", path);
+
+        if (isStyxMount(path))
+            deleteStyxMount(std::string(baseName));
 
         results.paths.insert(path);
 
