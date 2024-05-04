@@ -1,8 +1,11 @@
 #include "binary-cache-store.hh"
 #include "filetransfer.hh"
 #include "globals.hh"
+#include "globals.hh"
 #include "nar-info-disk-cache.hh"
 #include "callback.hh"
+
+#include <regex>
 
 namespace nix {
 
@@ -86,8 +89,17 @@ public:
         return ret;
     }
 
-    bool canUseStyx(int narSize) override {
-        return useStyx && narSize > settings.styxMinSize;
+    bool canUseStyx(int narSize, std::string name) override {
+        if (!useStyx || narSize < settings.styxMinSize)
+            return false;
+        // TODO: compile these only once
+        for (auto & exc : settings.styxExclude.get())
+            if (std::regex_match(name, std::regex(exc)))
+                return false;
+        for (auto & inc : settings.styxInclude.get())
+            if (std::regex_match(name, std::regex(inc)))
+                return true;
+        return false;
     }
 
 protected:

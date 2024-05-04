@@ -95,7 +95,7 @@ public:
     std::optional<std::string> getFile(const std::string & path);
 
     // just for HttpBinaryCacheStore, but has to be defined here
-    virtual bool canUseStyx(int narSize);
+    virtual bool canUseStyx(int narSize, std::string name);
 
 public:
 

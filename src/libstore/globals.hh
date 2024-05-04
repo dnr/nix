@@ -1238,6 +1238,10 @@ public:
 
     Setting<int> styxMinSize{this, 32*1024, "styx-min-size",
         "Use styx only for paths > this nar size."};
+    Setting<Strings> styxInclude{this, Strings{}, "styx-include",
+        "List of regular expressions to allow using styx (empty means never use)"};
+    Setting<Strings> styxExclude{this, Strings{}, "styx-exclude",
+        "List of regular expressions to deny using styx (overrides include)"};
     Setting<std::string> styxSockPath{this, "/var/cache/styx/styx.sock", "styx-sock-path",
         "Path to styx socket."};
 };

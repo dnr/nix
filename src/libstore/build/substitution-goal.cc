@@ -197,7 +197,7 @@ void PathSubstitutionGoal::referencesValid()
     auto src = dynamic_cast<BinaryCacheStore *>(sub.get());
     auto dst = dynamic_cast<LocalStore *>(&worker.store);
 
-    state = src && dst && src->canUseStyx(info->narSize) ?
+    state = src && dst && src->canUseStyx(info->narSize, std::string(info->path.name())) ?
         &PathSubstitutionGoal::tryStyx : &PathSubstitutionGoal::tryToRun;
     worker.wakeUp(shared_from_this());
 }
