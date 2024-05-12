@@ -215,11 +215,14 @@ void PathSubstitutionGoal::tryStyx()
     maintainRunningSubstitutions = std::make_unique<MaintainCount<uint64_t>>(worker.runningSubstitutions);
     worker.updateProgress();
 
+    outPipe.create();
+
     promise = std::promise<void>();
 
     thr = std::thread([this]() {
         try {
-            ReceiveInterrupts receiveInterrupts;
+            /* Wake up the worker loop when we're done. */
+            Finally updateStats([this]() { outPipe.writeSide.close(); });
 
             // TODO: use a better log line
             Activity act(*logger, actSubstitute, Logger::Fields{
@@ -235,8 +238,9 @@ void PathSubstitutionGoal::tryStyx()
         }
     });
 
+    worker.childStarted(shared_from_this(), {outPipe.readSide.get()}, true, false);
+
     state = &PathSubstitutionGoal::styxFinished;
-    worker.wakeUp(shared_from_this());
 }
 
 
@@ -245,6 +249,7 @@ void PathSubstitutionGoal::styxFinished()
     trace("substitute with styx finished");
 
     thr.join();
+    worker.childTerminated(this);
 
     try {
         promise.get_future().get();
@@ -257,8 +262,9 @@ void PathSubstitutionGoal::styxFinished()
         return;
     }
 
-    printMsg(lvlNotice, "mounted '%s' with styx", worker.store.printStorePath(storePath));
     worker.markContentsGood(storePath);
+
+    printMsg(lvlNotice, "mounted '%s' with styx", worker.store.printStorePath(storePath));
 
     maintainRunningSubstitutions.reset();
     maintainExpectedSubstitutions.reset();
