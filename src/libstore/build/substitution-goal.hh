@@ -107,8 +107,10 @@ public:
     void referencesValid();
     void tryToRun();
     void finished();
-    void tryStyx();
-    void styxFinished();
+    void tryStyxMount();
+    void tryStyxMaterialize();
+    void styxMountFinished();
+    void styxMaterializeFinished();
 
     /**
      * Callback used by the worker to write to the log.

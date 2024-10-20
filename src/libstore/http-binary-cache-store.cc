@@ -88,17 +88,20 @@ public:
         return ret;
     }
 
-    bool canUseStyx(int narSize, std::string name) override {
+    StyxMode canUseStyx(int narSize, std::string name) override {
         if (!useStyx || narSize < settings.styxMinSize)
-            return false;
+            return StyxDisable;
         // TODO: compile these only once
         for (auto & exc : settings.styxExclude.get())
             if (std::regex_match(name, std::regex(exc)))
-                return false;
+                return StyxDisable;
         for (auto & inc : settings.styxInclude.get())
             if (std::regex_match(name, std::regex(inc)))
-                return true;
-        return false;
+                return StyxMount;
+        for (auto & inc : settings.styxMaterialize.get())
+            if (std::regex_match(name, std::regex(inc)))
+                return StyxMaterialize;
+        return StyxDisable;
     }
 
 protected:

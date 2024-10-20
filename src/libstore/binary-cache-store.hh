@@ -6,6 +6,7 @@
 #include "log-store.hh"
 
 #include "pool.hh"
+#include "styx.hh"
 
 #include <atomic>
 
@@ -96,7 +97,7 @@ public:
     std::optional<std::string> getFile(const std::string & path);
 
     // just for HttpBinaryCacheStore, but has to be defined here
-    virtual bool canUseStyx(int narSize, std::string name);
+    virtual StyxMode canUseStyx(int narSize, std::string name);
 
 public:
 

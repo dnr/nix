@@ -193,18 +193,31 @@ void PathSubstitutionGoal::referencesValid()
         if (i != storePath) /* ignore self-references */
             assert(worker.store.isValidPath(i));
 
+    state = &PathSubstitutionGoal::tryToRun;
+
     auto src = dynamic_cast<BinaryCacheStore *>(sub.get());
     auto dst = dynamic_cast<LocalStore *>(&worker.store);
+    if (src && dst) {
+        switch (src->canUseStyx(info->narSize, std::string(info->path.name()))) {
+            case StyxMount:
+                state = &PathSubstitutionGoal::tryStyxMount;
+                break;
+            case StyxMaterialize:
+                state = &PathSubstitutionGoal::tryStyxMaterialize;
+                break;
+            case StyxDisable:
+                // regular substitution
+                break;
+        }
+    }
 
-    state = src && dst && src->canUseStyx(info->narSize, std::string(info->path.name())) ?
-        &PathSubstitutionGoal::tryStyx : &PathSubstitutionGoal::tryToRun;
     worker.wakeUp(shared_from_this());
 }
 
 
-void PathSubstitutionGoal::tryStyx()
+void PathSubstitutionGoal::tryStyxMount()
 {
-    trace("trying styx");
+    trace("trying styx mount");
 
     // limit concurrent jobs
     if (worker.getNrSubstitutions() >= std::max(1U, (unsigned int) settings.maxSubstitutionJobs)) {
@@ -240,13 +253,55 @@ void PathSubstitutionGoal::tryStyx()
 
     worker.childStarted(shared_from_this(), {outPipe.readSide.get()}, true, false);
 
-    state = &PathSubstitutionGoal::styxFinished;
+    state = &PathSubstitutionGoal::styxMountFinished;
 }
 
 
-void PathSubstitutionGoal::styxFinished()
+void PathSubstitutionGoal::tryStyxMaterialize()
 {
-    trace("substitute with styx finished");
+    trace("trying styx materialize");
+
+    // limit concurrent jobs
+    if (worker.getNrSubstitutions() >= std::max(1U, (unsigned int) settings.maxSubstitutionJobs)) {
+        worker.waitForBuildSlot(shared_from_this());
+        return;
+    }
+
+    maintainRunningSubstitutions = std::make_unique<MaintainCount<uint64_t>>(worker.runningSubstitutions);
+    worker.updateProgress();
+
+    outPipe.create();
+
+    promise = std::promise<void>();
+
+    thr = std::thread([this]() {
+        try {
+            /* Wake up the worker loop when we're done. */
+            Finally updateStats([this]() { outPipe.writeSide.close(); });
+
+            // TODO: use a better log line
+            Activity act(*logger, actSubstitute, Logger::Fields{
+                    worker.store.printStorePath(storePath), "STYX:"+sub->getUri()});
+            PushActivity pact(act.id);
+
+            auto local = dynamic_cast<LocalStore *>(&worker.store);
+            local->materializeStyx(sub->getUri(), *info, sub->isTrusted ? NoCheckSigs : CheckSigs);
+
+            promise.set_value();
+        } catch (...) {
+            promise.set_exception(std::current_exception());
+        }
+    });
+
+    worker.childStarted(shared_from_this(), {outPipe.readSide.get()}, true, false);
+
+    state = &PathSubstitutionGoal::styxMaterializeFinished;
+}
+
+
+void PathSubstitutionGoal::styxMountFinished()
+{
+    trace("substitute with styx finished (mount)");
 
     thr.join();
     worker.childTerminated(this);
@@ -272,6 +327,37 @@ void PathSubstitutionGoal::styxFinished()
     worker.updateProgress();
 
     done(ecSuccess, BuildResult::StyxMounted);
+}
+
+
+void PathSubstitutionGoal::styxMaterializeFinished()
+{
+    trace("substitute with styx finished (materialize)");
+
+    thr.join();
+    worker.childTerminated(this);
+
+    try {
+        promise.get_future().get();
+    } catch (std::exception & e) {
+        printMsg(lvlError, "styx materialize failed for '%s', falling back to substitution: %s",
+                worker.store.printStorePath(storePath), e.what());
+        // try regular substitution
+        state = &PathSubstitutionGoal::tryToRun;
+        worker.wakeUp(shared_from_this());
+        return;
+    }
+
+    worker.markContentsGood(storePath);
+
+    printMsg(lvlNotice, "materialized '%s' with styx", worker.store.printStorePath(storePath));
+
+    maintainRunningSubstitutions.reset();
+    maintainExpectedSubstitutions.reset();
+    worker.doneSubstitutions++;
+    worker.updateProgress();
+
+    done(ecSuccess, BuildResult::Substituted);
 }
 
 

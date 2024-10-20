@@ -66,6 +66,18 @@ void makeStyxMount(const std::string upstream, const std::string storePath, cons
 }
 
 
+void makeStyxMaterialize(const std::string upstream, const std::string storePath, const std::string dest, int narSize)
+{
+    nlohmann::json req = {
+        {"Upstream", upstream},
+        {"StorePath", storePath},
+        {"DestPath", dest},
+        {"NarSize", narSize},
+    };
+    styxRequest("/materialize", req);
+}
+
+
 bool isStyxMount(const std::string mountPoint)
 {
     struct statfs st;
