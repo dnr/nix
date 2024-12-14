@@ -10,6 +10,8 @@ struct HttpBinaryCacheStoreConfig : virtual BinaryCacheStoreConfig
 
     Path cacheUri;
 
+    const Setting<bool> useStyx{this, false, "styx", "Use styx for this store."};
+
     const std::string name() override
     {
         return "HTTP Binary Cache Store";

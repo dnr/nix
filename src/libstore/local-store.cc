@@ -17,6 +17,7 @@
 #include "posix-source-accessor.hh"
 #include "keys.hh"
 #include "users.hh"
+#include "styx.hh"
 
 #include <iostream>
 #include <algorithm>
@@ -1357,6 +1358,62 @@ StorePath LocalStore::addToStoreFromDump(
     }
 
     return dstPath;
+}
+
+
+void LocalStore::mountStyx(std::string sourceUri, const ValidPathInfo & info, CheckSigsFlag checkSigs)
+{
+    if (checkSigs && pathInfoIsUntrusted(info))
+        throw Error("cannot add path '%s' because it lacks a signature by a trusted key", printStorePath(info.path));
+
+    addTempRoot(info.path);
+
+    if (!isValidPath(info.path)) {
+        PathLocks outputLock;
+
+        auto realPath = Store::toRealPath(info.path);
+
+        /* Lock the output path.  But don't lock if we're being called
+           from a build hook (whose parent process already acquired a
+           lock on this path). */
+        if (!locksHeld.count(printStorePath(info.path)))
+            outputLock.lockPaths({realPath});
+
+        if (!isValidPath(info.path)) {
+            makeStyxMount(sourceUri, std::string(info.path.to_string()), realPath, info.narSize);
+            registerValidPath(info);
+        }
+
+        outputLock.setDeletion(true);
+    }
+}
+
+
+void LocalStore::materializeStyx(std::string sourceUri, const ValidPathInfo & info, CheckSigsFlag checkSigs)
+{
+    if (checkSigs && pathInfoIsUntrusted(info))
+        throw Error("cannot add path '%s' because it lacks a signature by a trusted key", printStorePath(info.path));
+
+    addTempRoot(info.path);
+
+    if (!isValidPath(info.path)) {
+        PathLocks outputLock;
+
+        auto realPath = Store::toRealPath(info.path);
+
+        /* Lock the output path.  But don't lock if we're being called
+           from a build hook (whose parent process already acquired a
+           lock on this path). */
+        if (!locksHeld.count(printStorePath(info.path)))
+            outputLock.lockPaths({realPath});
+
+        if (!isValidPath(info.path)) {
+            makeStyxMaterialize(sourceUri, std::string(info.path.to_string()), realPath, info.narSize);
+            registerValidPath(info);
+        }
+
+        outputLock.setDeletion(true);
+    }
 }
 
 

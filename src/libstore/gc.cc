@@ -5,6 +5,7 @@
 #include "unix-domain-socket.hh"
 #include "signals.hh"
 #include "posix-fs-canonicalise.hh"
+#include "styx.hh"
 
 #if !defined(__linux__)
 // For shelling out to lsof
@@ -647,6 +648,9 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
         }
 
         printInfo("deleting '%1%'", path);
+
+        if (isStyxMount(path))
+            deleteStyxMount(std::string(baseName));
 
         results.paths.insert(path);
 

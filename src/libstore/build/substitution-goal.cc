@@ -3,6 +3,8 @@
 #include "nar-info.hh"
 #include "finally.hh"
 #include "signals.hh"
+#include "binary-cache-store.hh"
+#include "local-store.hh"
 #include <coroutine>
 
 namespace nix {
@@ -198,19 +200,42 @@ Goal::Co PathSubstitutionGoal::tryToRun(StorePath subPath, nix::ref<Store> sub, 
 #endif
 
     auto promise = std::promise<void>();
+    auto styxMode = StyxDisable;
 
-    thr = std::thread([this, &promise, &subPath, &sub]() {
+    thr = std::thread([this, &promise, &subPath, &sub, &info, &styxMode]() {
         try {
             ReceiveInterrupts receiveInterrupts;
 
             /* Wake up the worker loop when we're done. */
             Finally updateStats([this]() { outPipe.writeSide.close(); });
 
-            Activity act(*logger, actSubstitute, Logger::Fields{worker.store.printStorePath(storePath), sub->getUri()});
+            // Get styx mode
+            auto cacheSrc = sub.dynamic_pointer_cast<BinaryCacheStore>();
+            auto localDst = dynamic_cast<LocalStore *>(&worker.store);
+            styxMode = cacheSrc && localDst ? cacheSrc->canUseStyx(info->narSize, std::string(info->path.name())) : StyxDisable;
+            std::string uriPrefix = styxMode == StyxDisable ? "" : "STYX:";
+            auto checkSigs = sub->isTrusted ? NoCheckSigs : CheckSigs;
+
+            Activity act(*logger, actSubstitute, Logger::Fields{worker.store.printStorePath(storePath), uriPrefix + sub->getUri()});
             PushActivity pact(act.id);
 
-            copyStorePath(*sub, worker.store,
-                subPath, repair, sub->isTrusted ? NoCheckSigs : CheckSigs);
+            if (styxMode != StyxDisable) {
+                try {
+                    if (styxMode == StyxMount) {
+                        localDst->mountStyx(sub->getUri(), *info, checkSigs);
+                    } else {
+                        localDst->materializeStyx(sub->getUri(), *info, checkSigs);
+                    }
+                } catch (std::exception & e) {
+                    printMsg(lvlError, "styx failed for '%s', falling back to substitution: %s",
+                            worker.store.printStorePath(storePath), e.what());
+                    styxMode = StyxDisable; // fall through to regular substitution
+                }
+            }
+
+            if (styxMode == StyxDisable) {
+                copyStorePath(*sub, worker.store, subPath, repair, checkSigs);
+            }
 
             promise.set_value();
         } catch (...) {
@@ -254,7 +279,17 @@ Goal::Co PathSubstitutionGoal::tryToRun(StorePath subPath, nix::ref<Store> sub, 
 
     worker.markContentsGood(storePath);
 
-    printMsg(lvlChatty, "substitution of path '%s' succeeded", worker.store.printStorePath(storePath));
+    switch (styxMode) {
+        case StyxDisable:
+            printMsg(lvlChatty, "substitution of path '%s' succeeded", worker.store.printStorePath(storePath));
+            break;
+        case StyxMount:
+            printMsg(lvlInfo, "mounted '%s' with styx", worker.store.printStorePath(storePath));
+            break;
+        case StyxMaterialize:
+            printMsg(lvlInfo, "materialized '%s' with styx", worker.store.printStorePath(storePath));
+            break;
+    }
 
     maintainRunningSubstitutions.reset();
 

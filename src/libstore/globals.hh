@@ -1228,6 +1228,17 @@ public:
           (as determined by its NAR serialisation).
         )"
     };
+
+    Setting<int> styxMinSize{this, 64*1024, "styx-min-size",
+        "Use Styx only for paths larger than this nar size."};
+    Setting<Strings> styxOndemand{this, Strings{}, "styx-ondemand",
+        "List of package name regexes to mount using Styx (empty means never use)"};
+    Setting<Strings> styxMaterialize{this, Strings{}, "styx-materialize",
+        "List of package name regexes to materialize using Styx (empty means never use)"};
+    Setting<Strings> styxExclude{this, Strings{}, "styx-exclude",
+        "List of package name regexes to deny using Styx (overrides styx-ondemand/materialize)"};
+    Setting<std::string> styxSockPath{this, "/var/cache/styx/styx.sock", "styx-sock-path",
+        "Path to Styx socket."};
 };
 
 
