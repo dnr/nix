@@ -4,6 +4,8 @@
 #include "nix/store/nar-info-disk-cache.hh"
 #include "nix/util/callback.hh"
 
+#include <regex>
+
 namespace nix {
 
 MakeError(UploadToHTTP, Error);
@@ -71,6 +73,26 @@ public:
             }
             diskCache->createCache(cacheUri, storeDir, wantMassQuery, priority);
         }
+    }
+
+    StyxMode canUseStyx(int narSize, std::string name) override {
+        // always use styx on fake cache, even if nar is too small
+        // TODO: maybe easier to do this a different way so we don't need a
+        // special case here
+        auto fakeCache = (getUri() == "http://localhost:7444");
+        if (!fakeCache && (!useStyx || narSize < settings.styxMinSize))
+            return StyxDisable;
+        // TODO: compile these only once
+        for (auto & exc : settings.styxExclude.get())
+            if (std::regex_match(name, std::regex(exc)))
+                return StyxDisable;
+        for (auto & inc : settings.styxOndemand.get())
+            if (std::regex_match(name, std::regex(inc)))
+                return StyxMount;
+        for (auto & inc : settings.styxMaterialize.get())
+            if (std::regex_match(name, std::regex(inc)))
+                return StyxMaterialize;
+        return StyxDisable;
     }
 
 protected:

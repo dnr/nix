@@ -190,6 +190,9 @@ public:
 
     void addTempRoot(const StorePath & path) override;
 
+    void mountStyx(std::string sourceUri, const ValidPathInfo & info, CheckSigsFlag checkSigs);
+    void materializeStyx(std::string sourceUri, const ValidPathInfo & info, CheckSigsFlag checkSigs);
+
 private:
 
     void createTempRootsFile();

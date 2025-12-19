@@ -5,6 +5,7 @@
 #include "nix/util/unix-domain-socket.hh"
 #include "nix/util/signals.hh"
 #include "nix/store/posix-fs-canonicalise.hh"
+#include "nix/store/styx.hh"
 
 #include "store-config-private.hh"
 
@@ -657,6 +658,9 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
         }
 
         printInfo("deleting '%1%'", path);
+
+        if (isStyxMount(path))
+            deleteStyxMount(std::string(baseName));
 
         results.paths.insert(path);
 

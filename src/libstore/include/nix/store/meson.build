@@ -74,6 +74,7 @@ headers = [config_pub_h] + files(
   'store-cast.hh',
   'store-dir-config.hh',
   'store-reference.hh',
+  'styx.hh',
   'uds-remote-store.hh',
   'worker-protocol-connection.hh',
   'worker-protocol-impl.hh',

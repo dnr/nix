@@ -36,6 +36,7 @@ struct BuildResult
         NotDeterministic,
         ResolvesToAlreadyValid,
         NoSubstituters,
+        StyxMounted,
     } status = MiscFailure;
 
     /**
@@ -80,6 +81,8 @@ struct BuildResult
                 return "ResolvesToAlreadyValid";
             case NoSubstituters:
                 return "NoSubstituters";
+            case StyxMounted:
+                return "StyxMounted";
             default:
                 return "Unknown";
             };

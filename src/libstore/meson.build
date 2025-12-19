@@ -312,6 +312,7 @@ sources = files(
   'ssh.cc',
   'store-api.cc',
   'store-reference.cc',
+  'styx.cc',
   'uds-remote-store.cc',
   'worker-protocol-connection.cc',
   'worker-protocol.cc',
