@@ -5,6 +5,7 @@
 #include "nix/util/logging.hh"
 #include "nix/store/styx.hh"
 
+#include <regex>
 #include <map>
 #include <sys/vfs.h>
 
@@ -51,6 +52,32 @@ static void styxRequest(const std::string path, const nlohmann::json & req) {
     }
 }
 
+StyxMode canUseStyx(const std::string storeUri, int narSize, std::string name) {
+    auto trim = [](std::string_view s) {
+        return s.back() == '/' ? s.substr(0, s.size() - 1) : s;
+    };
+    // always use styx on fake cache, even if nar is too small
+    // TODO: maybe easier to do this a different way so we don't need a
+    // special case here
+    if (trim(storeUri) != trim("http://localhost:7444")) {
+        bool useStyx = false;
+        for (auto & uri : settings.styxSubstituters.get())
+            if (trim(uri) == trim(storeUri)) { useStyx = true; break; }
+        if (!useStyx || narSize < settings.styxMinSize)
+            return StyxDisable;
+    }
+    // TODO: compile these only once
+    for (auto & exc : settings.styxExclude.get())
+        if (std::regex_match(name, std::regex(exc)))
+            return StyxDisable;
+    for (auto & inc : settings.styxOndemand.get())
+        if (std::regex_match(name, std::regex(inc)))
+            return StyxMount;
+    for (auto & inc : settings.styxMaterialize.get())
+        if (std::regex_match(name, std::regex(inc)))
+            return StyxMaterialize;
+    return StyxDisable;
+}
 
 void makeStyxMount(const std::string upstream, const std::string storePath, const std::string mountPoint, int narSize)
 {

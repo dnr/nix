@@ -1361,6 +1361,8 @@ public:
           Set it to 1 to warn on all paths.
         )"};
 
+    Setting<Strings> styxSubstituters{this, Strings{"https://cache.nixos.org/"}, "styx-substituters",
+        "Use Styx for these substituters."};
     Setting<int> styxMinSize{this, 64*1024, "styx-min-size",
         "Use Styx only for paths larger than this nar size."};
     Setting<Strings> styxOndemand{this, Strings{}, "styx-ondemand",
@@ -1372,6 +1374,7 @@ public:
     Setting<std::string> styxSockPath{this, "/var/cache/styx/styx.sock", "styx-sock-path",
         "Path to Styx socket."};
 };
+
 
 // FIXME: don't use a global variable.
 extern Settings settings;

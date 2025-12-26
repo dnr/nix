@@ -6,7 +6,6 @@
 #include "nix/store/log-store.hh"
 
 #include "nix/util/pool.hh"
-#include "nix/store/styx.hh"
 
 #include <atomic>
 
@@ -108,9 +107,6 @@ public:
     virtual void getFile(const std::string & path, Callback<std::optional<std::string>> callback) noexcept;
 
     std::optional<std::string> getFile(const std::string & path);
-
-    // just for HttpBinaryCacheStore, but has to be defined here
-    virtual StyxMode canUseStyx(int narSize, std::string name);
 
 public:
 

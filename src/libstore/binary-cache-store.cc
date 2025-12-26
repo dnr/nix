@@ -104,11 +104,6 @@ std::optional<std::string> BinaryCacheStore::getFile(const std::string & path)
     return std::move(sink.s);
 }
 
-StyxMode BinaryCacheStore::canUseStyx(int narSize, std::string name)
-{
-    return StyxDisable;
-}
-
 std::string BinaryCacheStore::narInfoFileFor(const StorePath & storePath)
 {
     return std::string(storePath.hashPart()) + ".narinfo";

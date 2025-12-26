@@ -5,6 +5,7 @@
 #include "nix/util/signals.hh"
 #include "nix/store/binary-cache-store.hh"
 #include "nix/store/local-store.hh"
+#include "nix/store/styx.hh"
 #include <coroutine>
 
 namespace nix {
@@ -216,7 +217,7 @@ Goal::Co PathSubstitutionGoal::tryToRun(
             // Get styx mode
             auto cacheSrc = sub.dynamic_pointer_cast<BinaryCacheStore>();
             auto localDst = dynamic_cast<LocalStore *>(&worker.store);
-            styxMode = cacheSrc && localDst ? cacheSrc->canUseStyx(info->narSize, std::string(info->path.name())) : StyxDisable;
+            styxMode = (cacheSrc && localDst) ? canUseStyx(cacheSrc->getUri(), info->narSize, std::string(info->path.name())) : StyxDisable;
             std::string uriPrefix = styxMode == StyxDisable ? "" : "STYX:";
             auto checkSigs = sub->isTrusted ? NoCheckSigs : CheckSigs;
 
