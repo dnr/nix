@@ -1,3 +1,3 @@
-(import (fetchTarball "https://github.com/edolstra/flake-compat/archive/master.tar.gz") {
+(import ./styx-flake-compat.nix {
   src = ./.;
 }).shellNix
